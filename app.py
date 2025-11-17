@@ -1,84 +1,85 @@
-from pathlib import Path
-from dotenv import load_dotenv
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, StreamingResponse
-from fastrtc import (
-    AdditionalOutputs,
-    ReplyOnPause,
-    Stream,
-    audio_to_bytes,
-    get_twilio_turn_credentials
-)
-from gradio.utils import get_space
-from groq import AsyncClient
-from pydantic import BaseModel
-
-import gradio as gr
-import numpy as np
+from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
+from vosk import Model, KaldiRecognizer
+from typing import List
+import base64
 import json
-import os
-import uvicorn
 
-cur_dir = Path(__file__).parent
+MODEL_PATH = "vosk-model-small-ru-0.22"
+SAMPLE_RATE = 16000
 
-load_dotenv()
+app = FastAPI(
+    title="Real-Time Audio Processor",
+    description="Process and transcribe audio in real-time using Vosk"
+)
+templates = Jinja2Templates(directory="templates")
 
-groq_client = AsyncClient(api_key=os.getenv("GROK_API_KEY"))
-
-async def transcribe(audio: tuple[int, np.ndarray], transcript: str):
-    response = await groq_client.audio.transcriptions.create(
-        file = ("audio-file.mp3", audio_to_bytes(audio)),
-        model = "whisper-large-v3-russian",
-        response_format = "verbose_json",
-    )
-    yield AdditionalOutputs(transcript + "\n" + response.text)
-
-
-transcript = gr.Textbox(label="Transcript")
-stream = Stream(
-    ReplyOnPause(transcribe),
-    modality="audio",
-    mode="send",
-    additional_inputs=[transcript],
-    additional_outputs=[transcript],
-    additional_outputs_handler=lambda a, b: b,
-    rtc_configuration=get_twilio_turn_credentials() if get_space() else None,
-    concurrency_limit=5 if get_space() else None,
-    time_limit=90 if get_space() else None
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 
-app = FastAPI()
 
-stream.mount(app)
+model = Model(MODEL_PATH)
+recognizer = KaldiRecognizer(model, SAMPLE_RATE)
 
-class SendInput(BaseModel):
-    webrtc_id: str
-    transcript: str
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
 
-@app.post("/send_input")
-def send_input(body: SendInput):
-    stream.set_input(body.webrtc_id, body.transcript)
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
 
-@app.get("/transcript")
-def _(webrtc_id: str):
-    async def output_stream():
-        async for output in stream.output_stream(webrtc_id):
-            transcript = output.args[0].split("\n")[-1]
-            yield f"event: output\ndata: {transcript}\n\n"
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)        
 
-    return StreamingResponse(output_stream(), media_type="text/event-stream")
+manager = ConnectionManager()
+
 
 @app.get("/")
-def index():
-    rtc_config = get_twilio_turn_credentials() if get_space() else None
-    html_content = (cur_dir / "index.html").read_text()
-    html_content = html_content.replace("__RTC_CONFIGURATION__", json.dumps(rtc_config))
-    return HTMLResponse(content=html_content)
+async def root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-if __name__ == "__main__":
-    if (mode := os.getenv("MODE")) == "UI":
-        stream.ui.launch(server_port=7860)
-    elif mode == "PHONE":
-        stream.fastphone(host="0.0.0.0", port=7860)
-    else:
-        uvicorn.run(app, host="0.0.0.0", port=7860)                       
+@app.websocket("/ws/audio")
+async def websocket_endpoint(websocket: WebSocket):
+    
+    await manager.connect(websocket)
+
+    try:
+
+     while True:
+        data = await websocket.receive_text()
+        message = json.loads(data)
+
+        if message.get("type") == "audio":
+            pcm_data = base64.b64decode(message.get("data"))
+            ok = recognizer.AcceptWaveform(pcm_data)
+
+            if ok:
+                result = json.loads(recognizer.Result())
+                await websocket.send_json({
+                    "type": "final",
+                    "text": result.get("text", "")
+                })
+            else:
+                partial = json.loads(recognizer.PartialResult())
+                await websocket.send_json({
+                    "type": "partial",
+                    "text": partial.get("partial", "")
+                })
+
+        if message.get("type") == "eof":
+            final = json.loads(recognizer.FinalResult())
+            await websocket.send_json({
+                "type": "final",
+                "text": final.get("text", "")
+            })
+            break
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)                       
