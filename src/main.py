@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from api import main_router
-from core.config import settings
+from src.core.config import settings
 import uvicorn
 
 app = FastAPI()
