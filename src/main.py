@@ -1,11 +1,27 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from api import main_router
-from src.core.config import settings
+from core.config import settings
+from core.models.db_helper import db_helper
 import uvicorn
 
-app = FastAPI()
+# Жизненный цикл приложения
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup
+    yield
+    # shutdown
+    await db_helper.dispose()
+
+
+templates = Jinja2Templates(directory="templates")
+
+
+app = FastAPI(
+    lifespan=lifespan,
+)
 
 app.include_router(
     main_router,
@@ -21,8 +37,6 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-templates = Jinja2Templates(directory="templates")
-
 
 @app.get("/")
 async def root(request: Request):
@@ -30,4 +44,8 @@ async def root(request: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", reload=True)                  
+    uvicorn.run(
+        "main:app",
+        host=settings.run.host,
+        port=settings.run.port, 
+        reload=True)                  
