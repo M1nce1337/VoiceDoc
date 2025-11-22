@@ -2,11 +2,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.templating import Jinja2Templates
 from api import main_router
-
+from core.config import settings
+import uvicorn
 
 app = FastAPI()
 
-app.include_router(main_router)
+app.include_router(
+    main_router,
+    prefix=settings.api.prefix
+    )
 
 
 app.add_middleware(
@@ -24,4 +28,6 @@ templates = Jinja2Templates(directory="templates")
 async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
-                       
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", reload=True)                  
