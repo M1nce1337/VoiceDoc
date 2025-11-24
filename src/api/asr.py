@@ -1,6 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from vosk import Model, KaldiRecognizer
 from websocket_connection.connection_manager import ConnectionManager
+from core.models.db_helper import db_helper
+from core.services.asr_service import ASRService
 import base64
 import json
 
@@ -18,9 +21,14 @@ manager = ConnectionManager()
 
 
 @router.websocket("/ws/audio")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    session: AsyncSession = Depends(db_helper.session_getter)
+    ):
     
     await manager.connect(websocket)
+
+    buffered_text = ""
 
     try:
 
@@ -38,6 +46,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "type": "final",
                     "text": result.get("text", "")
                 })
+
             else:
                 partial = json.loads(recognizer.PartialResult())
                 await websocket.send_json({
@@ -47,11 +56,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if message.get("type") == "eof":
             final = json.loads(recognizer.FinalResult())
+            final_text = final.get("final", "")
+
+            full_text = buffered_text + " " + final_text
+
+            await ASRService.save_record(
+                session=session,
+                raw_text=full_text,
+                final_text=final_text
+            )
+
             await websocket.send_json({
                 "type": "final",
-                "text": final.get("text", "")
+                "text": full_text
             })
             break
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+      

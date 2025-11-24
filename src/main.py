@@ -23,10 +23,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(
-    main_router,
-    prefix=settings.api.prefix
-    )
+app.include_router(main_router)
 
 
 app.add_middleware(
@@ -46,6 +43,5 @@ async def root(request: Request):
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
-        host=settings.run.host,
-        port=settings.run.port, 
-        reload=True)                  
+        reload=True
+    )                  

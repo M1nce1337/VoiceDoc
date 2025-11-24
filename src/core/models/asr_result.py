@@ -7,6 +7,9 @@ from datetime import datetime
 
 
 class ASRResult(Base):
+    __tablename__ = "asr_results"
+
+    
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     final_text: Mapped[str] = mapped_column(Text, nullable=False)
 
