@@ -42,9 +42,13 @@ async def websocket_endpoint(
 
             if ok:
                 result = json.loads(recognizer.Result())
+                text = result.get("text", "")
+                buffered_text += text
+
+
                 await websocket.send_json({
-                    "type": "final",
-                    "text": result.get("text", "")
+                    "type": "final_fragment",
+                    "text": text
                 })
 
             else:
@@ -56,8 +60,7 @@ async def websocket_endpoint(
 
         if message.get("type") == "eof":
             final = json.loads(recognizer.FinalResult())
-            final_text = final.get("final", "")
-
+            final_text = final.get("text", "")
             full_text = buffered_text + " " + final_text
 
             await ASRService.save_record(
@@ -70,6 +73,7 @@ async def websocket_endpoint(
                 "type": "final",
                 "text": full_text
             })
+
             break
 
     except WebSocketDisconnect:
