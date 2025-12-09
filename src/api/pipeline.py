@@ -1,9 +1,11 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from vosk import Model, KaldiRecognizer
 from websocket_connection.connection_manager import ConnectionManager
 from core.models.db_helper import db_helper
 from core.services.asr_service import ASRService
+from core.services.llm_service import LLMService
 import base64
 import json
 
@@ -14,10 +16,14 @@ SAMPLE_RATE = 16000
 
 router = APIRouter()
 
-model = Model(MODEL_PATH)
-recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+# Инициализация модели для распознавания речи
+asr_model = Model(MODEL_PATH)
+recognizer = KaldiRecognizer(asr_model, SAMPLE_RATE)
+
 
 manager = ConnectionManager()
+
+text = "" # здесь будем хранить распознанный текст
 
 
 @router.websocket("/ws/audio")
@@ -25,10 +31,10 @@ async def websocket_endpoint(
     websocket: WebSocket,
     session: AsyncSession = Depends(db_helper.session_getter)
     ):
-    
-    await manager.connect(websocket)
 
-    buffered_text = ""
+    global text
+
+    await manager.connect(websocket)
 
     try:
 
@@ -43,11 +49,10 @@ async def websocket_endpoint(
             if ok:
                 result = json.loads(recognizer.Result())
                 text = result.get("text", "")
-                buffered_text += text
 
 
                 await websocket.send_json({
-                    "type": "final_fragment",
+                    "type": "final",
                     "text": text
                 })
 
@@ -60,18 +65,16 @@ async def websocket_endpoint(
 
         if message.get("type") == "eof":
             final = json.loads(recognizer.FinalResult())
-            final_text = final.get("text", "")
-            full_text = buffered_text + " " + final_text
-
+            
             await ASRService.save_record(
                 session=session,
-                raw_text=full_text,
-                final_text=final_text
+                raw_text=text,
+                final_text=final
             )
 
             await websocket.send_json({
                 "type": "final",
-                "text": full_text
+                "text": final.get("text", "")
             })
 
             break
@@ -79,4 +82,7 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
-      
+
+@router.post("/llm/structure")
+def llm_process():
+    return LLMService.send_message(text)      
