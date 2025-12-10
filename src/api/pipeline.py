@@ -32,8 +32,7 @@ async def websocket_endpoint(
     ):
 
     global text
-    buffered_text = ""
-
+    
     await manager.connect(websocket)
 
     try:
@@ -49,9 +48,7 @@ async def websocket_endpoint(
             if ok:
                 result = json.loads(recognizer.Result())
                 text = result.get("text", "")
-                buffered_text += text
-
-
+                
                 await websocket.send_json({
                     "type": "final",
                     "text": text
@@ -69,7 +66,7 @@ async def websocket_endpoint(
             
             await ASRService.save_record(
                 session=session,
-                raw_text=buffered_text,
+                raw_text=text,
                 final_text=final.get("text", "")
             )
 
