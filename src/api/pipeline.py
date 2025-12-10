@@ -1,5 +1,4 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from vosk import Model, KaldiRecognizer
 from websocket_connection.connection_manager import ConnectionManager
@@ -33,6 +32,7 @@ async def websocket_endpoint(
     ):
 
     global text
+    buffered_text = ""
 
     await manager.connect(websocket)
 
@@ -49,6 +49,7 @@ async def websocket_endpoint(
             if ok:
                 result = json.loads(recognizer.Result())
                 text = result.get("text", "")
+                buffered_text += text
 
 
                 await websocket.send_json({
@@ -68,8 +69,8 @@ async def websocket_endpoint(
             
             await ASRService.save_record(
                 session=session,
-                raw_text=text,
-                final_text=final
+                raw_text=buffered_text,
+                final_text=final.get("text", "")
             )
 
             await websocket.send_json({
