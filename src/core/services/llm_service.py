@@ -1,6 +1,4 @@
 import requests
-import json
-
 
 class LLMService:
     
@@ -10,7 +8,7 @@ class LLMService:
     temperature = 0.5
     max_tokens = -1
 
-    # Функция для отправки сообщения и получения ответа
+    # Метод класса для отправки сообщения и получения ответа
     @classmethod
     def send_message(cls, message: str) -> dict:
         headers = {'Content-Type': 'application/json'}
