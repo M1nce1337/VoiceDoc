@@ -47,7 +47,7 @@ async def websocket_endpoint(
 
             if ok:
                 result = json.loads(recognizer.Result())
-                text = result.get("text", "")
+                text += result.get("text", "")
                 
                 await websocket.send_json({
                     "type": "final",
