@@ -3,10 +3,12 @@ import requests
 class LLMService:
     
     # Параметры запроса к LLM
-    api_url = "http://127.0.0.1:1234/v1/chat/completions"
-    model = "qwen3-vl-30b"
+    api_url: str = "http://127.0.0.1:1234/v1/chat/completions"
+    model: str = "qwen3-vl-30b"
     temperature = 0.5
     max_tokens = -1
+    system_prompt_content: str = "Ты - медицинский ассистент. На основе диалога врача и пациента сформируй JSON с полями: " \
+                                 "complaints, anamnesis, status_praesens, recommendations"
 
     # Метод класса для отправки промпта и получения ответа
     @classmethod
@@ -15,8 +17,7 @@ class LLMService:
         data = {
             "model": cls.model,
             "messages": [
-                {"role": "system", "content": ("Ты - медицинский ассистент. На основе диалога врача и пациента сформируй JSON с полями:"
-                                               "complaints, anamnesis, status_praesens, recommendations")},
+                {"role": "system", "content": cls.system_prompt_content},
                 {"role": "user", "content": message}                               
             ],
             "temperature": cls.temperature,

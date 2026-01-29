@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from vosk import Model, KaldiRecognizer
-from websocket_connection.connection_manager import ConnectionManager
+from websocket_connection.connection_manager import manager
 from core.models.db_helper import db_helper
 from core.services.asr_service import ASRService
 from core.services.llm_service import LLMService
@@ -18,9 +18,6 @@ router = APIRouter()
 # Инициализация модели для распознавания речи
 asr_model = Model(MODEL_PATH)
 recognizer = KaldiRecognizer(asr_model, SAMPLE_RATE)
-
-
-manager = ConnectionManager()
 
 text = "" # здесь будем хранить распознанный текст
 

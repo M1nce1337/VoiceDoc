@@ -12,3 +12,5 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.discard(websocket)
+
+manager = ConnectionManager()        
